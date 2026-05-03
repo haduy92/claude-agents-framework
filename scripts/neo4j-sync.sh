@@ -15,7 +15,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "[neo4j-sync] .env not found. Run: cp .env.template .env" >&2
     exit 1
 fi
-# shellcheck source=/dev/null
+# shellcheck disable=SC1090
 set -a; source "$ENV_FILE"; set +a
 
 NEO4J_URI="${NEO4J_URI:-bolt://localhost:7687}"
