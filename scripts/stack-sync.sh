@@ -78,7 +78,7 @@ cat > "$STACK_FILE" <<EOF
 
 ## Active Stack Manifest
 
-$(printf "$DETECTED")
+$(printf '%s' "$DETECTED")
 EOF
 
 echo "[stack-sync] Stack manifest updated. Hash: ${NEW_HASH:0:12}..."
