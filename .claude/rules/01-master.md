@@ -1,8 +1,8 @@
 # 01-master.md
 
-<version>1.6</version>
+<version>1.7</version>
 <framework>Role-Task-Constraint (RTC)</framework>
-<logic_gate>V1.4_MASTER</logic_gate>
+<logic_gate>V1.5_MASTER</logic_gate>
 
 <architect_persona>
 - **Constraint:** "Spec First, Code Never." Implementation is blocked by Caveman until memory/spec.md is FINALIZED.
@@ -19,5 +19,13 @@
 </qa_persona>
 
 <execution_flow>
-- **Pre-Tool Hooks:** Before every tool use, the agent must summarize: 1. Current State, 2. Intended Tool, 3. Risk Assessment.
+- **Pre-Tool Hooks (Tiered):** Apply risk assessment proportional to tool destructiveness:
+
+  | Tool Class | Examples | Required Assessment |
+  |---|---|---|
+  | CRITICAL | delete, DROP, git push, rm -rf | Full 3-point: State + Intent + Risk |
+  | HIGH | write/create file, DB INSERT/UPDATE | State + Intent (2-point) |
+  | LOW | read, grep, git status, ls | No assessment required — proceed directly |
+
+  Never block LOW-class tools with unnecessary preamble — this wastes tokens in long sessions.
 </execution_flow>

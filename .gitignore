@@ -1,0 +1,7 @@
+# AI Agent State Noise
+memory/archive/
+.claude/rules/02-stack.md 
+persistence/active_session.json
+
+# Keep the templates but ignore the dynamic logs if preferred
+# memory/history.md

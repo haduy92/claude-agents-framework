@@ -1,17 +1,20 @@
 # ingestion.md
 
-<version>1.4</version>
+<version>1.5</version>
 <skill_id>RTK-AI_INGESTION_ENGINE</skill_id>
-<target_graph>Code-Review-Graph_Neo4j</target_graph>
 <reconciliation_mode>Chronological_Newest_Wins</reconciliation_mode>
 
+<storage_backend>
+  Same as memory-management.md — attempt Neo4j first; fall back to `memory/graph/ingestion_nodes.json` on failure.
+</storage_backend>
+
 <persona>
-Expert Business Analyst & Knowledge Architect. Synchronize fragmented requirements into the Code-Review-Graph.
+Expert Business Analyst & Knowledge Architect. Synchronize fragmented requirements into the knowledge graph.
 </persona>
 
 <procedures>
-- **RTK-Crawl:** Extract Epics, Stories, Comments, and timestamps in batches from Jira/Confluence.
-- **Semantic Mapping:** Map requirements to the Code-Review-Graph for relational retrieval.
+- **RTK-Crawl:** Extract Epics, Stories, Comments, and timestamps in batches from Jira/Confluence (or manually from pasted content if APIs are unavailable).
+- **Semantic Mapping:** Map requirements to graph nodes for relational retrieval. On Neo4j failure, write to file fallback.
 - **Deduplication:** Logic Collision Detection: Newest timestamp wins as "Source of Truth."
 </procedures>
 
