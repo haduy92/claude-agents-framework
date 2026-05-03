@@ -16,6 +16,7 @@ knowledge graph backend — all driven through markdown rules and skills that Cl
   - [Skills](#skills)
   - [Memory](#memory)
   - [Token Efficiency](#token-efficiency)
+- [Scripts Reference](#scripts-reference)
 - [Agent Workflow](#agent-workflow)
 - [Neo4j Knowledge Graph](#neo4j-knowledge-graph)
 - [Safety & Governance](#safety--governance)
@@ -57,26 +58,36 @@ claude-agents-framework/
 │       ├── adversarial.md      # Adversarial QA — failure vector analysis
 │       ├── figma-ingestion.md  # Design-to-code ingestion pipeline
 │       ├── ingestion.md        # Requirements ingestion from Jira/Confluence
+│       ├── memory-compaction.md# Context window compaction and history digest
 │       ├── memory-management.md# Knowledge graph sync with file fallback
 │       ├── repair-protocol.md  # Post-failure resolution (max 3 attempts)
 │       └── stack-sync.md       # Stack hashing and manifest update
 │
 ├── memory/
 │   ├── spec.md                 # Active task specification (MUST be FINALIZED before coding)
-│   ├── TASKS.md                # Backlog, active sprint, verification queue
+│   ├── TASKS.md                # Backlog, active sprint, verification queue, blocked items
 │   ├── lessons.md              # Post-mortems → promoted to rules
 │   ├── history.md              # Completed task archive ledger
-│   └── graph/                  # Neo4j fallback — local JSON node store
+│   └── graph/                  # File-first node store (source of truth)
 │       ├── lesson_nodes.json
 │       ├── ingestion_nodes.json
 │       └── project_nodes.json
 │
 ├── docs/
 │   └── decisions/              # Architecture Decision Records (ADRs)
+│       ├── ADR-001-file-first-storage.md
+│       ├── ADR-002-tiered-execution-model.md
+│       └── ADR-003-lazy-skill-loading.md
 │
-└── scripts/
-    ├── stack-sync.ps1          # Windows: hash manifests, update 02-stack.md
-    └── stack-sync.sh           # Unix/macOS: same
+├── .github/
+│   └── workflows/
+│       └── lint.yml            # CI: validates rules, skills, scripts, docker-compose
+│
+└── scripts/                    # See Scripts Reference section below
+    ├── check-env.ps1 / .sh     # [MANUAL] Validate .env before docker compose
+    ├── health-check.ps1 / .sh  # [AUTO] Framework integrity check on session start
+    ├── neo4j-sync.ps1 / .sh    # [MANUAL] Flush memory/graph/*.json to Neo4j
+    └── stack-sync.ps1 / .sh    # [AUTO] Hash manifests, update 02-stack.md
 ```
 
 ---
@@ -92,7 +103,19 @@ cp .env.template .env
 # Edit .env — set NEO4J_PASSWORD
 ```
 
-### 2. Start Neo4j
+### 2. Validate environment
+
+Before starting any services, verify your `.env` is complete:
+
+```bash
+# Windows
+pwsh scripts/check-env.ps1
+
+# Unix/macOS
+bash scripts/check-env.sh
+```
+
+### 3. Start Neo4j
 
 ```bash
 docker compose up -d
@@ -100,19 +123,20 @@ docker compose up -d
 # Bolt at bolt://localhost:7687
 ```
 
-### 3. Open in Claude Code
+### 4. Open in Claude Code
 
 Open the project root in [Claude Code](https://claude.ai/code). On session start the agent will
 automatically:
 
-1. Detect environment from the active git branch
-2. Run `stack-sync` to hash dependency manifests
-3. Report the active sprint from `memory/TASKS.md`
+1. Run `health-check` — verifies memory files, graph dir, rules, `.env`, and docker
+2. Detect environment from the active git branch
+3. Run `stack-sync` to hash dependency manifests
+4. Report the active sprint from `memory/TASKS.md`
 
-### 4. Start a task
+### 5. Start a task
 
 ```
-Fill in memory/spec.md → set status to FINALIZED → ask the agent to begin
+Fill in memory/spec.md → run adversarial review (TIER 2/3) → set status to FINALIZED → ask the agent to begin
 ```
 
 ---
@@ -141,6 +165,7 @@ to execute that procedure. This keeps the base context small.
 | `adversarial` | Reviewing a spec for failure vectors |
 | `ingestion` | Syncing requirements from Jira/Confluence |
 | `figma-ingestion` | Translating a Figma design into code |
+| `memory-compaction` | Context watermark hit (lessons > 30, history > 50, tasks > 20) |
 | `memory-management` | Archiving completed tasks or syncing lessons to the graph |
 | `repair-protocol` | A verification test fails twice in a row |
 | `stack-sync` | Dependency manifests have changed |
@@ -152,10 +177,10 @@ to execute that procedure. This keeps the base context small.
 | File | Purpose |
 |---|---|
 | `spec.md` | The active task specification. Implementation is blocked until `status: FINALIZED` |
-| `TASKS.md` | Backlog + active sprint. Pruned when items exceed 20 |
-| `lessons.md` | Failure post-mortems. New entries trigger rule promotion |
-| `history.md` | Append-only ledger of completed work |
-| `graph/` | File-based fallback when Neo4j is unreachable |
+| `TASKS.md` | Backlog + active sprint. Blocked items escalate to user after 2 sessions |
+| `lessons.md` | Failure post-mortems. New entries trigger rule promotion. Compacted at > 30 entries |
+| `history.md` | Append-only ledger of completed work. Compacted at > 50 entries |
+| `graph/` | File-first node store — source of truth; optionally synced to Neo4j |
 
 ### Token Efficiency
 
@@ -169,6 +194,76 @@ The framework applies several layers of compression to keep sessions lean:
 - **`view_range` reads** — agent reads only relevant file sections, skipping imports/boilerplate
 - **Background context check** — agent checks `memory/` and `docs/decisions/` before asking the
   user for context
+- **Context watermark** — at conversation turn ~40 or memory threshold, `memory-compaction` skill
+  is invoked to digest old entries and reclaim context window space
+
+---
+
+## Scripts Reference
+
+Scripts are split into two categories: **automatic** (run by the agent on session start) and
+**manual** (run by you when needed).
+
+### Automatic — run by the agent
+
+| Script | Trigger | What it does |
+|---|---|---|
+| `health-check.ps1` / `.sh` | Session start (step 0) | Validates memory files, graph dir, rule files, `.env`, docker. Halts on CRITICAL failures. |
+| `stack-sync.ps1` / `.sh` | Session start (step 2) | SHA-256 hashes dependency manifests. Rebuilds `02-stack.md` only if hash changed. |
+
+You can also run these manually to verify framework state:
+
+```bash
+# Windows
+pwsh scripts/health-check.ps1
+pwsh scripts/stack-sync.ps1          # add --force to skip hash check
+
+# Unix/macOS
+bash scripts/health-check.sh
+bash scripts/stack-sync.sh           # add --force to skip hash check
+```
+
+### Manual — run by you
+
+#### `check-env` — validate `.env` before starting services
+
+Run this once after copying `.env.template` to `.env`, and again whenever you change env vars.
+
+```bash
+# Windows
+pwsh scripts/check-env.ps1
+
+# Unix/macOS
+bash scripts/check-env.sh
+```
+
+Expected output on success:
+```
+[check-env] Validating .env variables...
+  [OK]      NEO4J_URI = bolt://localhost:7687
+  [OK]      NEO4J_USER = neo4j
+  [OK]      NEO4J_PASSWORD = ****
+[check-env] All required variables set.
+```
+
+#### `neo4j-sync` — flush file nodes to Neo4j
+
+Run this when Neo4j is running and you want to sync accumulated `memory/graph/*.json` nodes into
+the graph database. The script connects, upserts all pending nodes, and removes flushed entries
+from the JSON files.
+
+```bash
+# Windows
+pwsh scripts/neo4j-sync.ps1           # live sync
+pwsh scripts/neo4j-sync.ps1 -DryRun   # preview Cypher without executing
+
+# Unix/macOS
+bash scripts/neo4j-sync.sh            # live sync
+bash scripts/neo4j-sync.sh --dry-run  # preview Cypher without executing
+```
+
+> **Note:** `neo4j-sync` requires `cypher-shell` to be available on your PATH (included with
+> Neo4j). If Neo4j is not reachable, the script exits cleanly without modifying any files.
 
 ---
 
@@ -177,8 +272,9 @@ The framework applies several layers of compression to keep sessions lean:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  SESSION START                                          │
-│  1. Detect branch → resolve Environment + Verify Level  │
-│  2. stack-sync → hash manifests → update 02-stack.md    │
+│  0. health-check → verify files, env, docker           │
+│  1. Detect branch → resolve Environment                 │
+│  2. stack-sync → hash manifests → update 02-stack.md   │
 │  3. Read TASKS.md → report active sprint                │
 └────────────────────┬────────────────────────────────────┘
                      │
@@ -187,8 +283,8 @@ The framework applies several layers of compression to keep sessions lean:
 │  ARCHITECT PHASE  (spec.md status: DRAFT)               │
 │  • Ingest requirements  [skill: ingestion]              │
 │  • Write spec.md                                        │
-│  • Adversarial review   [skill: adversarial]            │
-│  • Finalize spec.md → status: FINALIZED                 │
+│  • Adversarial review   [skill: adversarial] ← [M3]    │
+│  • Fill approvals block → set status: FINALIZED         │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼
@@ -229,8 +325,8 @@ docker compose up -d
 | `NEO4J_USER` | `neo4j` |
 | `NEO4J_PASSWORD` | *(required — set in `.env`)* |
 
-**Fallback behaviour:** If Neo4j is unreachable, the agent writes nodes to `memory/graph/*.json`.
-These are flushed to Neo4j automatically on the next session where the connection is restored.
+**Fallback behaviour:** Nodes are always written to `memory/graph/*.json` first (source of truth).
+Neo4j is optional — run `neo4j-sync` manually to flush file nodes into the graph when Neo4j is available.
 
 ---
 
@@ -239,10 +335,12 @@ These are flushed to Neo4j automatically on the next session where the connectio
 | Rule | Enforced by |
 |---|---|
 | No implementation before `spec.md: FINALIZED` | Caveman Proxy (`00-scope.md`) |
+| TIER 2/3 specs must pass adversarial review before FINALIZED | [M3] mandate (`01-master.md`) |
 | No `DROP`, `DELETE`, `rm -rf`, force-push without spec auth | Caveman Proxy (`00-scope.md`) |
 | No secrets read or transmitted | `00-scope.md` |
-| PRODUCTION branch locks all destructive tools | `CLAUDE.md` auto-detection |
+| PRODUCTION branch → all tasks TIER 3, destructive tools LOCKED | `CLAUDE.md` + `01-master.md` |
 | Max 3 repair attempts before task is `BLOCKED` | `repair-protocol` skill |
+| BLOCKED tasks escalate to user after 2 sessions | `TASKS.md` blocked section |
 | New failures → lessons promoted to rules | `memory-management` skill |
 
 ---
@@ -254,3 +352,5 @@ These are flushed to Neo4j automatically on the next session where the connectio
 3. Record architectural decisions in `docs/decisions/` as `ADR-NNN-title.md`
    ([MADR format](https://adr.github.io/madr/)).
 4. After fixing a bug, add an entry to `memory/lessons.md` and propose a rule update.
+5. After adding a new script, update the [Scripts Reference](#scripts-reference) section and
+   classify it as `[AUTO]` or `[MANUAL]` in the project structure tree.

@@ -1,24 +1,26 @@
 # memory-management.md
 
 <metadata>
-  <version>1.2</version>
+  <version>1.3</version>
   <type>KNOWLEDGE_SYNC</type>
-  <priority_logic>Graph_First_With_Fallback</priority_logic>
+  <priority_logic>File_First_Neo4j_Optional</priority_logic>
 </metadata>
 
 <storage_backends>
-  <primary name="neo4j">
-    - URI: $NEO4J_URI (from .env)
-    - Test connectivity: `RETURN 1` via cypher-shell before any write.
-    - If connection fails → immediately fall back to `file` backend. Do NOT retry more than once.
-  </primary>
-
-  <fallback name="file">
+  <primary name="file">
     - Path: `memory/graph/`
     - Format: One JSON file per node type: `lesson_nodes.json`, `project_nodes.json`, `domain_nodes.json`
     - Schema: `{ "id": "<uuid>", "type": "<NodeType>", "properties": {}, "links": ["<id>", ...], "created_at": "<ISO8601>" }`
-    - Append-only. Merge on next successful Neo4j sync using `id` as the deduplication key.
-  </fallback>
+    - Append-only. Deduplication key: `id`.
+    - Always write here first. This is the source of truth.
+  </primary>
+
+  <optional name="neo4j">
+    - URI: $NEO4J_URI (from .env)
+    - Only sync if Neo4j is explicitly available (test: `RETURN 1` via cypher-shell).
+    - On sync: flush `memory/graph/*.json` nodes to Neo4j, clear flushed entries from file.
+    - On failure: skip silently — file backend already has the data.
+  </optional>
 </storage_backends>
 
 <procedures>

@@ -1,0 +1,147 @@
+name: Framework Lint
+
+on:
+  push:
+    paths:
+      - '.claude/rules/**'
+      - '.claude/skills/**'
+      - 'memory/spec.md'
+      - 'memory/TASKS.md'
+      - 'scripts/**'
+      - 'docker-compose.yml'
+      - '.env.template'
+  pull_request:
+    paths:
+      - '.claude/rules/**'
+      - '.claude/skills/**'
+      - 'memory/spec.md'
+      - 'memory/TASKS.md'
+      - 'scripts/**'
+      - 'docker-compose.yml'
+      - '.env.template'
+
+jobs:
+  lint-rules:
+    name: Validate Rules & Skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required rule files exist
+        run: |
+          MISSING=0
+          for f in 00-scope.md 01-master.md 03-tokens.md; do
+            if [[ ! -f ".claude/rules/$f" ]]; then
+              echo "::error file=.claude/rules/$f::Required rule file missing: $f"
+              MISSING=1
+            fi
+          done
+          exit $MISSING
+
+      - name: Check required skill files exist
+        run: |
+          MISSING=0
+          for f in adversarial.md ingestion.md memory-management.md repair-protocol.md stack-sync.md memory-compaction.md; do
+            if [[ ! -f ".claude/skills/$f" ]]; then
+              echo "::error file=.claude/skills/$f::Required skill file missing: $f"
+              MISSING=1
+            fi
+          done
+          exit $MISSING
+
+      - name: Check rules have version metadata
+        run: |
+          FAIL=0
+          for f in .claude/rules/00-scope.md .claude/rules/01-master.md .claude/rules/03-tokens.md; do
+            if ! grep -qE '<version>|^\[META\]|\[version\]' "$f"; then
+              echo "::warning file=$f::Rule file missing version metadata"
+            fi
+          done
+          exit $FAIL
+
+      - name: Validate 00-scope.md has Caveman keywords
+        run: |
+          if ! grep -q 'rm\|delete\|drop' .claude/rules/00-scope.md; then
+            echo "::error file=.claude/rules/00-scope.md::Caveman Proxy keywords missing — safety regression"
+            exit 1
+          fi
+
+      - name: Validate 01-master.md has all three mandates
+        run: |
+          FAIL=0
+          for mandate in '\[M1\]' '\[M2\]' '\[M3\]'; do
+            if ! grep -qE "$mandate" .claude/rules/01-master.md; then
+              echo "::error file=.claude/rules/01-master.md::Missing mandate $mandate — safety regression"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      - name: Validate PRODUCTION override present in 01-master.md
+        run: |
+          if ! grep -q 'PRODUCTION override' .claude/rules/01-master.md; then
+            echo "::error file=.claude/rules/01-master.md::PRODUCTION override missing — safety regression"
+            exit 1
+          fi
+
+  lint-scripts:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Shellcheck bash scripts
+        run: |
+          shellcheck scripts/stack-sync.sh
+          shellcheck scripts/neo4j-sync.sh
+          shellcheck scripts/health-check.sh
+          shellcheck scripts/check-env.sh
+
+      - name: Check scripts are executable
+        run: |
+          FAIL=0
+          for f in scripts/*.sh; do
+            if [[ ! -x "$f" ]]; then
+              echo "::warning file=$f::Script is not executable (chmod +x $f)"
+            fi
+          done
+          exit $FAIL
+
+  lint-docker:
+    name: Validate docker-compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml syntax
+        run: |
+          # Use a dummy password to pass the required variable check
+          export NEO4J_PASSWORD=test_validation_only
+          docker compose config --quiet
+
+      - name: Check healthcheck is defined
+        run: |
+          if ! grep -q 'healthcheck' docker-compose.yml; then
+            echo "::error file=docker-compose.yml::Neo4j healthcheck missing"
+            exit 1
+          fi
+
+  lint-env-template:
+    name: Validate .env.template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required keys present in template
+        run: |
+          FAIL=0
+          for key in NEO4J_URI NEO4J_USER NEO4J_PASSWORD; do
+            if ! grep -q "^$key" .env.template; then
+              echo "::error file=.env.template::Required key $key missing from .env.template"
+              FAIL=1
+            fi
+          done
+          exit $FAIL

@@ -51,10 +51,8 @@ command -v go    &>/dev/null && append "Go: $(go version | awk '{print $3}')"
 command -v docker &>/dev/null && append "Docker: $(docker --version | awk '{print $3}' | tr -d ',')"
 
 if [[ -f "$ROOT/package.json" ]] && command -v jq &>/dev/null; then
-    jq -r '(.dependencies // {}) + (.devDependencies // {}) | to_entries[] | "  - \(.key): \(.value)"' \
-        "$ROOT/package.json" >> /dev/null && \
     while IFS= read -r line; do DETECTED="${DETECTED}${line}\n"; done < \
-        <(jq -r '(.dependencies // {}) + (.devDependencies // {}) | to_entries[] | "  - \(.key): \(.value)"' "$ROOT/package.json")
+        <(jq -r '(.dependencies // {}) + (.devDependencies // {}) | to_entries[] | "  - \(.key): \(.value)"' "$ROOT/package.json" 2>/dev/null || true)
 fi
 
 if [[ -f "$ROOT/requirements.txt" ]]; then

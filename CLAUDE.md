@@ -1,9 +1,9 @@
 # CLAUDE.md
 
 <metadata>
-  <version>1.9</version>
+  <version>2.0</version>
   <status>ACTIVE</status>
-  <rule_set>V1.5_MASTER</rule_set>
+  <rule_set>Lean-RTC_v2.0</rule_set>
 </metadata>
 
 <active_state>
@@ -14,32 +14,33 @@
 </active_state>
 
 <initialization>
+  0. **Health Check:** Run `pwsh scripts/health-check.ps1` (Windows) or `bash scripts/health-check.sh` (Unix).
+     On CRITICAL failures, halt and report to user. On WARN, proceed but surface warnings.
+
   1. **Auto-Detect Environment:** Run `git branch --show-current`.
-     - `main` or `master` → PRODUCTION (Verification_Level: ADVERSARIAL)
-     - `staging` or `release/*` → STAGING (Verification_Level: ADVERSARIAL)
-     - Any other branch → DEVELOPMENT (Verification_Level: STANDARD)
-     Update <active_state> with resolved values before any other action.
+     - `main` or `master` → PRODUCTION
+     - `staging` or `release/*` → STAGING
+     - Any other branch → DEVELOPMENT
+     Update <active_state> with resolved values.
 
   2. **Stack Sync:** Run `pwsh scripts/stack-sync.ps1` (Windows) or `bash scripts/stack-sync.sh` (Unix).
-     This hashes dependency manifests and updates `.claude/rules/02-stack.md`.
-     Skip if the hash in `02-stack.md` already matches — the script handles this automatically.
+     Updates `.claude/rules/02-stack.md`.
 
-  3. **Verify State:** Read `memory/TASKS.md` and report the active sprint and any blockers.
+  3. **Verify State:** Read `memory/TASKS.md` and report active sprint.
 
-  4. **Skill Loading (Lazy):** Do NOT preload all skills. Load a skill only when its procedure is
-     explicitly needed. Inject only the relevant `skills/*.md` content at that moment.
+  4. **Skill Loading (Lazy):** Load `skills/*.md` ONLY when procedure is explicitly needed.
 </initialization>
 
 <critical_governance>
-  - **Caveman Proxy:** Implementation is strictly forbidden until memory/spec.md is FINALIZED.
+  - **Tiered Execution:** Assess complexity (TIER 1/2/3). Tier 1 skips spec.md; Tier 2/3 requires it.
   - **Reproduction Mandate:** Every bug fix requires a Red-Green reproduction test.
-  - **Production Security:** If Environment is PRODUCTION, all destructive tools (delete, write, push) are LOCKED. Manual 2-step verification is mandatory.
-  - **Repair Limit:** Max 3 attempts per task. Failures must trigger `repair-protocol`.
+  - **Zero-Chat:** Terse, bulleted output only. Apply `rtk` to all shell commands.
+  - **Security:** If Environment is PRODUCTION, all destructive tools are LOCKED.
 </critical_governance>
 
 <project_status>
   - Current Task: [Refer to memory/TASKS.md]
-  - Blockers: [None / List]
+  - Blockers: [None]
 </project_status>
 
 **Final Directive:** Plan first, verify always. Safety in production is the absolute priority.
